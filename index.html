@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion to Abstract Art Generator</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/universal-sentence-encoder@4.3.2"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.1) 0%, transparent 80%);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            position: relative;
+            z-index: 2;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border-radius: 30px;
+            padding: 3rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3),
+                        inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+            margin-bottom: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .glass-panel:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4),
+                        inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            background: linear-gradient(45deg, #00ff87, #60efff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px rgba(0,255,135,0.3);
+            letter-spacing: 2px;
+        }
+
+        #emotionInput {
+            width: 100%;
+            height: 120px;
+            margin: 20px 0;
+            padding: 20px;
+            font-size: 18px;
+            border-radius: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            resize: none;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+
+        #emotionInput:focus {
+            outline: none;
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.3);
+            box-shadow: 0 0 25px rgba(96, 239, 255, 0.2);
+        }
+
+        .controls {
+            display: flex;
+            gap: 1.5rem;
+            margin: 2rem 0;
+            justify-content: center;
+        }
+
+        button {
+            padding: 15px 35px;
+            font-size: 1.1rem;
+            background: linear-gradient(45deg, #00ff87, #60efff);
+            color: #000;
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 600;
+            box-shadow: 0 5px 15px rgba(0, 255, 135, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: 0.5s;
+        }
+
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 255, 135, 0.4);
+        }
+
+        button:hover::before {
+            left: 100%;
+        }
+
+        #artCanvas {
+            width: 100%;
+            max-width: 1000px;
+            height: 600px;
+            margin: 20px auto;
+            display: block;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5),
+                        inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(5px);
+            transition: transform 0.3s ease;
+        }
+
+        .art-container {
+            position: relative;
+            margin-top: 2rem;
+            padding: 20px;
+            border-radius: 25px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+        }
+
+        .art-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            border-radius: 20px;
+            box-shadow: inset 0 0 100px rgba(0,0,0,0.5);
+            background: linear-gradient(45deg, rgba(0,255,135,0.1), rgba(96,239,255,0.1));
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); filter: brightness(1); }
+            50% { transform: scale(1.02); filter: brightness(1.2); }
+            100% { transform: scale(1); filter: brightness(1); }
+        }
+
+        .generating {
+            animation: pulse 2s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="glass-panel">
+            <h1>Emotion to Abstract Art Generator</h1>
+            <textarea id="emotionInput" placeholder="Describe your emotions in detail... How are you feeling right now?"></textarea>
+            <div class="controls">
+                <button onclick="generateArt()">Generate Art</button>
+                <button onclick="saveArt()">Save Artwork</button>
+            </div>
+        </div>
+        <div class="art-container">
+            <canvas id="artCanvas" width="1000" height="600"></canvas>
+            <div class="art-overlay"></div>
+        </div>
+    </div>
+
+    <script>
+        // Get our canvas ready for drawing
+        const canvas = document.getElementById('artCanvas');
+        const ctx = canvas.getContext('2d');
+        let particles = []; // This will hold all our magical particles
+
+        /**
+         * 🎨 Particle Class: The building blocks of our emotional art
+         * Each particle is like a tiny star that moves and glows based on emotion
+         */
+        class Particle {
+            constructor(x, y, color, emotionIntensity) {
+                // Where is our particle?
+                this.x = x;
+                this.y = y;
+                this.color = color;
+
+                // How big and fast should it be? Based on emotion intensity!
+                this.size = Math.random() * 3 * emotionIntensity + 2;
+                this.speedX = (Math.random() - 0.5) * emotionIntensity;
+                this.speedY = (Math.random() - 0.5) * emotionIntensity;
+
+                // Particle lifecycle properties
+                this.life = 1;           // Full life to start
+                this.opacity = 1;        // Fully visible
+                this.decay = 0.003;      // How fast it fades away
+            }
+
+            // Update particle position and properties
+            update() {
+                // Move our particle
+                this.x += this.speedX;
+                this.y += this.speedY;
+
+                // Bounce off the canvas edges - keep particles in view
+                if (this.x <= 0 || this.x >= canvas.width) this.speedX *= -1;
+                if (this.y <= 0 || this.y >= canvas.height) this.speedY *= -1;
+
+                // Slowly fade away...
+                this.life -= this.decay;
+                this.opacity = this.life * 0.8;
+
+                // Add a little chaos - makes movement more organic
+                this.speedX += (Math.random() - 0.5) * 0.1;
+                this.speedY += (Math.random() - 0.5) * 0.1;
+            }
+
+            // Draw our particle on the canvas
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.opacity;
+                ctx.fill();
+                
+                // ✨ Magic touch: Add a beautiful glow effect
+                ctx.shadowBlur = this.size * 2;
+                ctx.shadowColor = this.color;
+                ctx.fill();
+                
+                // Clean up our drawing settings
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        /**
+         * 🎨 Color Picker: Choose colors based on emotions
+         * Each emotion has its own color palette that represents its feeling
+         */
+        function getEmotionColor(text) {
+            const emotions = {
+                'happy': ['#FFD700', '#FFA500', '#FF4500'],      // Warm, sunny colors
+                'sad': ['#4682B4', '#483D8B', '#191970'],        // Deep, cool blues
+                'angry': ['#FF0000', '#8B0000', '#FF4500'],      // Hot, intense reds
+                'calm': ['#98FB98', '#90EE90', '#3CB371'],       // Soft, natural greens
+                'excited': ['#FF69B4', '#FF1493', '#FF00FF'],    // Vibrant pinks
+                'peaceful': ['#87CEEB', '#00BFFF', '#1E90FF'],   // Tranquil blues
+                'anxious': ['#9370DB', '#8A2BE2', '#9400D3'],    // Deep purples
+                'love': ['#FF69B4', '#FF1493', '#C71585']        // Romantic pinks
+            };
+
+            // Default to white if no emotion is detected
+            let colors = ['#FFFFFF'];
+            
+            // Find matching emotion in text
+            for (let emotion in emotions) {
+                if (text.toLowerCase().includes(emotion)) {
+                    colors = emotions[emotion];
+                    break;
+                }
+            }
+            
+            // Pick a random color from our palette
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+
+        /**
+         * 📊 Emotion Intensity Calculator
+         * Figures out how intense the emotion is based on the text
+         */
+        function getEmotionIntensity(text) {
+            const baseIntensity = 3;  // Start with a base level
+            // Count exclamation marks - more means more intense!
+            const exclamationCount = (text.match(/!/g) || []).length;
+            // Check for CAPS - SHOUTING means more intensity!
+            const upperCaseRatio = text.replace(/[^A-Z]/g, '').length / text.length;
+            
+            return baseIntensity + exclamationCount + (upperCaseRatio * 5);
+        }
+
+        /**
+         * ✨ Particle Creator
+         * Spawns multiple particles at once from a point
+         */
+        function createParticles(x, y, color, emotionIntensity, count) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color, emotionIntensity));
+            }
+        }
+
+        /**
+         * 🎬 Animation Loop
+         * Keeps our particles moving and looking beautiful
+         */
+        function animate() {
+            // Create a fade trail effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw each particle
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw();
+
+                // Remove particles that have faded away
+                if (particles[i].life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            // Keep the animation going if we still have particles
+            if (particles.length > 0) {
+                requestAnimationFrame(animate);
+            }
+        }
+
+        /**
+         * 🎨 Main Art Generation Function
+         * Creates a beautiful visualization of the emotion
+         */
+        function generateArt() {
+            const text = document.getElementById('emotionInput').value;
+            if (!text) return;  // No emotion? No art!
+
+            // Fresh canvas for new emotions
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            particles = [];
+
+            // Analyze the emotion
+            const emotionIntensity = getEmotionIntensity(text);
+            const color = getEmotionColor(text);
+
+            // Start with a burst from the center
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            createParticles(centerX, centerY, color, emotionIntensity, 100);
+
+            // Begin the show!
+            animate();
+
+            // Keep adding particles for a while
+            const interval = setInterval(() => {
+                if (particles.length < 300) {  // Don't overwhelm the canvas
+                    const x = Math.random() * canvas.width;
+                    const y = Math.random() * canvas.height;
+                    createParticles(x, y, color, emotionIntensity, 5);
+                } else {
+                    clearInterval(interval);
+                }
+            }, 100);
+        }
+
+        /**
+         * 💾 Save Artwork Function
+         * Lets you keep your emotional masterpiece
+         */
+        function saveArt() {
+            const link = document.createElement('a');
+            link.download = 'emotion-art.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+    </script>
+</body>
+</html>
